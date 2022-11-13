@@ -8,6 +8,7 @@ from ServiceApp.models import Note
 from ServiceApp.serializers import NoteSerializer
 from cryptography.fernet import Fernet
 import shortuuid
+from datetime import datetime
 
 
 class CreateNewNote(APIView):
@@ -49,19 +50,27 @@ class GetNoteDetails(APIView):
             raise Http404
 
     def get(self, request, pk, format=None):
-        snippet = self.get_object(pk)
-        serializer = NoteSerializer(snippet)
-        return Response(serializer.data)
-
-    def put(self, request, pk, format=None):
-        snippet = self.get_object(pk)
-        serializer = NoteSerializer(snippet, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        note = self.get_object(pk)
+        serializer = NoteSerializer(note)
+        data = serializer.data
+        if data['isDestroyed']:
+            note.delete()
+            return Response({'message': "This Note is Already Destroyed."}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            if data['destroyTime'] is not None and datetime.utcnow().isoformat() > data['destroyTime']:
+                note.delete()
+                return Response({'message': "This Note is Already Destroyed."}, status=status.HTTP_404_NOT_FOUND)
+            elif data['destroyTime'] is None:
+                data['isDestroyed'] = True
+                updateSerializer = NoteSerializer(note, data=data)
+                if updateSerializer.is_valid():
+                    updateSerializer.save()
+                    return Response(updateSerializer.data)
+                return Response(updateSerializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response(data)
 
     def delete(self, request, pk, format=None):
-        snippet = self.get_object(pk)
-        snippet.delete()
+        note = self.get_object(pk)
+        note.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
