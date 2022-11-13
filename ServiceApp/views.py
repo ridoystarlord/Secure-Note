@@ -29,7 +29,6 @@ class CreateNewNote(APIView):
         encryptFrontendKey = fernet_obj.encrypt(data['frontendSecretKey'].encode())
         encryptFrontendKeyString = str(encryptFrontendKey, 'utf-8')
         keyString = str(ferne_key, "utf-8")
-        # t = bytes(a, 'utf-8')
         data['message'] = encryptStringMessage
         data['frontendSecretKey'] = encryptFrontendKeyString
         data['backendSecretKey'] = keyString
@@ -38,7 +37,7 @@ class CreateNewNote(APIView):
         serializer = NoteSerializer(data=data)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response({"message": "Note Created Successful", "url": data['url']}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -53,6 +52,12 @@ class GetNoteDetails(APIView):
         note = self.get_object(pk)
         serializer = NoteSerializer(note)
         data = serializer.data
+
+        ferne_key = bytes(data['backendSecretKey'], 'utf-8')
+        byteskey = bytes(data['frontendSecretKey'], 'utf-8')
+        bytesMessage = bytes(data['message'], 'utf-8')
+        fernet_obj = Fernet(ferne_key)
+
         if data['isDestroyed']:
             note.delete()
             return Response({'message': "This Note is Already Destroyed."}, status=status.HTTP_404_NOT_FOUND)
@@ -65,10 +70,14 @@ class GetNoteDetails(APIView):
                 updateSerializer = NoteSerializer(note, data=data)
                 if updateSerializer.is_valid():
                     updateSerializer.save()
-                    return Response(updateSerializer.data)
+                    decryptMessage = fernet_obj.decrypt(bytesMessage).decode()
+                    decryptFrontendKey = fernet_obj.decrypt(byteskey).decode()
+                    return Response({"message": decryptMessage, "frontendSecretKey": decryptFrontendKey})
                 return Response(updateSerializer.errors, status=status.HTTP_400_BAD_REQUEST)
             else:
-                return Response(data)
+                decryptMessage = fernet_obj.decrypt(bytesMessage).decode()
+                decryptFrontendKey = fernet_obj.decrypt(byteskey).decode()
+                return Response({"message": decryptMessage, "frontendSecretKey": decryptFrontendKey})
 
     def delete(self, request, pk, format=None):
         note = self.get_object(pk)
