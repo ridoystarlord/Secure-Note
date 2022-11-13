@@ -38,6 +38,7 @@ class CreateNewNote(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "Note Created Successful", "url": data['url']}, status=status.HTTP_201_CREATED)
+            # return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -57,6 +58,8 @@ class GetNoteDetails(APIView):
         byteskey = bytes(data['frontendSecretKey'], 'utf-8')
         bytesMessage = bytes(data['message'], 'utf-8')
         fernet_obj = Fernet(ferne_key)
+        decryptMessage = fernet_obj.decrypt(bytesMessage).decode()
+        decryptFrontendKey = fernet_obj.decrypt(byteskey).decode()
 
         if data['isDestroyed']:
             note.delete()
@@ -70,13 +73,13 @@ class GetNoteDetails(APIView):
                 updateSerializer = NoteSerializer(note, data=data)
                 if updateSerializer.is_valid():
                     updateSerializer.save()
-                    decryptMessage = fernet_obj.decrypt(bytesMessage).decode()
-                    decryptFrontendKey = fernet_obj.decrypt(byteskey).decode()
                     return Response({"message": decryptMessage, "frontendSecretKey": decryptFrontendKey})
                 return Response(updateSerializer.errors, status=status.HTTP_400_BAD_REQUEST)
             else:
-                decryptMessage = fernet_obj.decrypt(bytesMessage).decode()
-                decryptFrontendKey = fernet_obj.decrypt(byteskey).decode()
+                if data["hasPassword"]:
+                    return Response({
+                        "message": "You will be asked for the password to read the note. If you don't have it, ask the person who sent you the note for it, before proceeding.",
+                        "hasPassword": data['hasPassword']})
                 return Response({"message": decryptMessage, "frontendSecretKey": decryptFrontendKey})
 
     def delete(self, request, pk, format=None):
