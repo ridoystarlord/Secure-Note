@@ -86,3 +86,32 @@ class GetNoteDetails(APIView):
         note = self.get_object(pk)
         note.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class GetPasswordProtectedNoteDetails(APIView):
+    def get_object(self, pk):
+        try:
+            return Note.objects.get(url=pk)
+        except Note.DoesNotExist:
+            raise Http404
+
+    def post(self, request, pk, format=None):
+        note = self.get_object(pk)
+        serializer = NoteSerializer(note)
+        data = serializer.data
+
+        ferne_key = bytes(data['backendSecretKey'], 'utf-8')
+        byteskey = bytes(data['frontendSecretKey'], 'utf-8')
+        bytesMessage = bytes(data['message'], 'utf-8')
+        fernet_obj = Fernet(ferne_key)
+
+        decryptMessage = fernet_obj.decrypt(bytesMessage).decode()
+        decryptFrontendKey = fernet_obj.decrypt(byteskey).decode()
+
+        requestBody = request.data
+
+        if requestBody['password'] == requestBody['confirmPassword']:
+            if data['destroyTime'] is not None and datetime.utcnow().isoformat() > data['destroyTime']:
+                note.delete()
+                return Response({'message': "This Note is Already Destroyed."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"message": decryptMessage, "frontendSecretKey": decryptFrontendKey})
