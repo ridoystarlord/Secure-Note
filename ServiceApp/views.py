@@ -101,7 +101,8 @@ class GetNoteDetails(APIView):
     def delete(self, request, pk, format=None):
         note = self.get_object(pk)
         note.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response({'message': "Note Deleted Successfully"},
+                        status=status.HTTP_204_NO_CONTENT)
 
 
 class GetPasswordProtectedNoteDetails(APIView):
@@ -115,7 +116,6 @@ class GetPasswordProtectedNoteDetails(APIView):
         note = self.get_object(pk)
         serializer = NoteSerializer(note)
         data = serializer.data
-        print(data)
         ferne_key = bytes(data['backendSecretKey'], 'utf-8')
         byteskey = bytes(data['frontendSecretKey'], 'utf-8')
         bytesMessage = bytes(data['message'], 'utf-8')
