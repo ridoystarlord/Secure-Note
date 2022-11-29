@@ -1,0 +1,125 @@
+{
+	"info": {
+		"_postman_id": "053576bf-f5b6-45ad-9cee-d6149a689ba1",
+		"name": "Seecnote",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "23464189"
+	},
+	"item": [
+		{
+			"name": "Create Note",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"destroyTime\":null,\r\n    \"askForConfirmation\": false,\r\n    \"message\": \"Hi I am new note\",\r\n    \"frontendSecretKey\": \"123456\",\r\n    \"password\": \"123456\",\r\n    \"confirmPassword\": \"123456\",\r\n    \"name\": \"\",\r\n    \"email\": null\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://127.0.0.1:8000/note/new/",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8000",
+					"path": [
+						"note",
+						"new",
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Note",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://127.0.0.1:8000/note/MCWzwspN2dxhqfpdRhEaGT/",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8000",
+					"path": [
+						"note",
+						"MCWzwspN2dxhqfpdRhEaGT",
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Hidden Note",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"password\": \"123456\",\r\n    \"confirmPassword\": \"123456\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://127.0.0.1:8000/note/hidden/MCWzwspN2dxhqfpdRhEaGT/",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8000",
+					"path": [
+						"note",
+						"hidden",
+						"MCWzwspN2dxhqfpdRhEaGT",
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Destroy Note",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "http://127.0.0.1:8000/note/2w9XCMRPo9AdDwHZbQGCsys/",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8000",
+					"path": [
+						"note",
+						"2w9XCMRPo9AdDwHZbQGCsys",
+						""
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
