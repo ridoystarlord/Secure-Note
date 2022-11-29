@@ -1,14 +1,14 @@
 from django.contrib.auth.hashers import make_password, check_password
-from django.http import Http404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
 from ServiceApp.models import Note
 from ServiceApp.serializers import NoteSerializer, CreateResponseSerializer, ResponseSerializer
-from cryptography.fernet import Fernet
 import shortuuid
 from datetime import datetime
+
+from ServiceApp.utils import note_destroyed, password_not_match, encrypt_message, decrypt_message
 
 
 class CreateNewNote(APIView):
@@ -18,21 +18,13 @@ class CreateNewNote(APIView):
             if data['password'] == data['confirmPassword']:
                 data['password'] = make_password(data['password'])
             else:
-                return Response({"message": "Password and Confirm Password didn't match"},
-                                status=status.HTTP_400_BAD_REQUEST)
-        ferne_key = Fernet.generate_key()
-        keyString = str(ferne_key, "utf-8")
-        fernet_obj = Fernet(ferne_key)
+                return password_not_match()
 
-        encryptMessage = fernet_obj.encrypt(data['message'].encode())
-        encryptStringMessage = str(encryptMessage, 'utf-8')
+        encryptData = encrypt_message(data['message'], data['frontendSecretKey'])
 
-        encryptFrontendKey = fernet_obj.encrypt(data['frontendSecretKey'].encode())
-        encryptFrontendKeyString = str(encryptFrontendKey, 'utf-8')
-
-        data['message'] = encryptStringMessage
-        data['frontendSecretKey'] = encryptFrontendKeyString
-        data['backendSecretKey'] = keyString
+        data['message'] = encryptData[0]
+        data['frontendSecretKey'] = encryptData[1]
+        data['backendSecretKey'] = encryptData[2]
         data['url'] = shortuuid.uuid()
 
         serializer = NoteSerializer(data=data)
@@ -48,55 +40,49 @@ class CreateNewNote(APIView):
 
 class GetNoteDetails(APIView):
     def get_object(self, pk):
-        try:
-            return Note.objects.get(url=pk)
-        except Note.DoesNotExist:
-            raise Http404
+        return Note.objects.get(url=pk)
 
     def get(self, request, pk, format=None):
-        note = self.get_object(pk)
-        serializer = NoteSerializer(note)
-        data = serializer.data
+        try:
+            note = self.get_object(pk)
+            serializer = NoteSerializer(note)
+            data = serializer.data
 
-        ferne_key = bytes(data['backendSecretKey'], 'utf-8')
-        byteskey = bytes(data['frontendSecretKey'], 'utf-8')
-        bytesMessage = bytes(data['message'], 'utf-8')
-        fernet_obj = Fernet(ferne_key)
-        decryptMessage = fernet_obj.decrypt(bytesMessage).decode()
-        decryptFrontendKey = fernet_obj.decrypt(byteskey).decode()
+            decryptData = decrypt_message(data['message'], data['frontendSecretKey'], data['backendSecretKey'])
 
-        if data['isDestroyed']:
-            note.delete()
-            return Response({'message': "This Note is Already Destroyed.", "isDestroyed": True},
-                            status=status.HTTP_404_NOT_FOUND)
-        else:
-            if data['password']:
-                return Response({
-                    "message": "You will be asked for the password to read the note. If you don't have it, ask the person who sent you the note for it, before proceeding.",
-                    "hasPassword": True})
-            elif data['destroyTime'] is not None and datetime.utcnow().isoformat() > data['destroyTime']:
+            if data['isDestroyed']:
                 note.delete()
-                return Response({'message': "This Note is Already Destroyed.", "isDestroyed": True},
-                                status=status.HTTP_404_NOT_FOUND)
-            elif data['destroyTime'] is None:
-                data['isDestroyed'] = True
-                updateSerializer = NoteSerializer(note, data=data)
-                if updateSerializer.is_valid():
-                    updateSerializer.save()
-                    responseSerializer = ResponseSerializer(updateSerializer.data)
+                return note_destroyed()
+            else:
+                if data['password']:
+                    return Response({
+                        "message": "You will be asked for the password to read the note. If you don't have it, ask the person who sent you the note for it, before proceeding.",
+                        "hasPassword": True})
+                elif data['destroyTime'] is not None and datetime.utcnow().isoformat() > data['destroyTime']:
+                    note.delete()
+                    return note_destroyed()
+                elif data['destroyTime'] is None:
+                    data['isDestroyed'] = True
+                    updateSerializer = NoteSerializer(note, data=data)
+                    if updateSerializer.is_valid():
+                        updateSerializer.save()
+                        responseSerializer = ResponseSerializer(updateSerializer.data)
+                        updateData = responseSerializer.data
+                        updateData["isDestroyed"] = False
+                        updateData["message"] = decryptData[0]
+                        updateData["frontendSecretKey"] = decryptData[1]
+                        return Response(updateData, status=status.HTTP_200_OK)
+                    return Response(updateSerializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    responseSerializer = ResponseSerializer(note)
                     updateData = responseSerializer.data
                     updateData["isDestroyed"] = False
-                    updateData["message"] = decryptMessage
-                    updateData["frontendSecretKey"] = decryptFrontendKey
+                    updateData["message"] = decryptData[0]
+                    updateData["frontendSecretKey"] = decryptData[1]
                     return Response(updateData, status=status.HTTP_200_OK)
-                return Response(updateSerializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                responseSerializer = ResponseSerializer(note)
-                updateData = responseSerializer.data
-                updateData["isDestroyed"] = False
-                updateData["message"] = decryptMessage
-                updateData["frontendSecretKey"] = decryptFrontendKey
-                return Response(updateData, status=status.HTTP_200_OK)
+
+        except Note.DoesNotExist:
+            return note_destroyed()
 
     def delete(self, request, pk, format=None):
         note = self.get_object(pk)
@@ -107,53 +93,44 @@ class GetNoteDetails(APIView):
 
 class GetPasswordProtectedNoteDetails(APIView):
     def get_object(self, pk):
-        try:
-            return Note.objects.get(url=pk)
-        except Note.DoesNotExist:
-            raise Http404
+        return Note.objects.get(url=pk)
 
     def post(self, request, pk, format=None):
-        note = self.get_object(pk)
-        serializer = NoteSerializer(note)
-        data = serializer.data
-        ferne_key = bytes(data['backendSecretKey'], 'utf-8')
-        byteskey = bytes(data['frontendSecretKey'], 'utf-8')
-        bytesMessage = bytes(data['message'], 'utf-8')
-        fernet_obj = Fernet(ferne_key)
+        try:
+            note = self.get_object(pk)
+            serializer = NoteSerializer(note)
+            data = serializer.data
 
-        decryptMessage = fernet_obj.decrypt(bytesMessage).decode()
-        decryptFrontendKey = fernet_obj.decrypt(byteskey).decode()
+            decryptData = decrypt_message(data['message'], data['frontendSecretKey'], data['backendSecretKey'])
 
-        requestBody = request.data
+            requestBody = request.data
 
-        if requestBody['password'] == requestBody['confirmPassword']:
-            if check_password(requestBody['password'], data['password']):
-                if data['isDestroyed']:
-                    note.delete()
-                    return Response({'message': "This Note is Already Destroyed.", "isDestroyed": True},
-                                    status=status.HTTP_404_NOT_FOUND)
-                if data['destroyTime'] is None:
-                    data['isDestroyed'] = True
-                    updateSerializer = NoteSerializer(note, data=data)
-                    if updateSerializer.is_valid():
-                        updateSerializer.save()
-                        responseSerializer = ResponseSerializer(updateSerializer.data)
-                        updateData = responseSerializer.data
-                        updateData["isDestroyed"] = False
-                        updateData["message"] = decryptMessage
-                        updateData["frontendSecretKey"] = decryptFrontendKey
-                        return Response(updateData, status=status.HTTP_200_OK)
-                    return Response(updateSerializer.errors, status=status.HTTP_400_BAD_REQUEST)
-                if data['destroyTime'] is not None and datetime.utcnow().isoformat() > data['destroyTime']:
-                    note.delete()
-                    return Response({'message': "This Note is Already Destroyed.", "isDestroyed": True},
-                                    status=status.HTTP_404_NOT_FOUND)
-                data["message"] = decryptMessage
-                data["frontendSecretKey"] = decryptFrontendKey
-                responseData = ResponseSerializer(data)
-                return Response(responseData.data, status=status.HTTP_200_OK)
-            else:
-                return Response({"message": "Password and Confirm Password didn't match"},
-                                status=status.HTTP_400_BAD_REQUEST)
-        return Response({"message": "Password and Confirm Password didn't match"},
-                        status=status.HTTP_400_BAD_REQUEST)
+            if requestBody['password'] == requestBody['confirmPassword']:
+                if check_password(requestBody['password'], data['password']):
+                    if data['isDestroyed']:
+                        note.delete()
+                        return note_destroyed()
+                    if data['destroyTime'] is None:
+                        data['isDestroyed'] = True
+                        updateSerializer = NoteSerializer(note, data=data)
+                        if updateSerializer.is_valid():
+                            updateSerializer.save()
+                            responseSerializer = ResponseSerializer(updateSerializer.data)
+                            updateData = responseSerializer.data
+                            updateData["isDestroyed"] = False
+                            updateData["message"] = decryptData[0]
+                            updateData["frontendSecretKey"] = decryptData[1]
+                            return Response(updateData, status=status.HTTP_200_OK)
+                        return Response(updateSerializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                    if data['destroyTime'] is not None and datetime.utcnow().isoformat() > data['destroyTime']:
+                        note.delete()
+                        return note_destroyed()
+                    data["message"] = decryptData[0]
+                    data["frontendSecretKey"] = decryptData[1]
+                    responseData = ResponseSerializer(data)
+                    return Response(responseData.data, status=status.HTTP_200_OK)
+                else:
+                    return password_not_match()
+            return password_not_match()
+        except Note.DoesNotExist:
+            return note_destroyed()
